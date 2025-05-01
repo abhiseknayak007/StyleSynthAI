@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Style Transfer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .upload-box {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px;
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+        }
+        .upload-box:hover {
+            border-color: #3498db;
+        }
+        .upload-box h3 {
+            margin-top: 0;
+            color: #3498db;
+        }
+        .upload-box input {
+            display: none;
+        }
+        .preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .preview-box {
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .preview-box h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .action-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+            transition: background-color 0.3s;
+        }
+        .action-button:hover {
+            background-color: #2980b9;
+        }
+        .action-button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        .error-message {
+            color: #e74c3c;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .success-message {
+            color: #27ae60;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .drag-over {
+            border-color: #3498db;
+            background-color: rgba(52, 152, 219, 0.1);
+        }
+        .upload-icon {
+            font-size: 50px;
+            color: #bdc3c7;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Neural Style Transfer</h1>
+        
+        <div class="upload-section">
+            <div class="upload-box" id="contentUploadBox" ondrop="dropHandler(event, 'content')" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)">
+                <div class="upload-icon">📷</div>
+                <h3>Content Image</h3>
+                <p>Click to select or drag and drop your image here</p>
+                <input type="file" id="contentImage" accept="image/*" onchange="previewImage(this, 'contentPreview')">
+            </div>
+            
+            <div class="upload-box" id="styleUploadBox" ondrop="dropHandler(event, 'style')" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)">
+                <div class="upload-icon">🎨</div>
+                <h3>Style Image</h3>
+                <p>Click to select or drag and drop your image here</p>
+                <input type="file" id="styleImage" accept="image/*" onchange="previewImage(this, 'stylePreview')">
+            </div>
+        </div>
+        
+        <div class="preview-container">
+            <div class="preview-box">
+                <h3>Content Image</h3>
+                <img id="contentPreview" class="preview-image" src="" alt="Content preview" style="display: none;">
+                <p id="contentPlaceholder">No image selected</p>
+            </div>
+            
+            <div class="preview-box">
+                <h3>Style Image</h3>
+                <img id="stylePreview" class="preview-image" src="" alt="Style preview" style="display: none;">
+                <p id="stylePlaceholder">No image selected</p>
+            </div>
+            
+            <div class="preview-box">
+                <h3>Result</h3>
+                <img id="resultPreview" class="preview-image" src="" alt="Result preview" style="display: none;">
+                <p id="resultPlaceholder">Transfer result will appear here</p>
+                <a id="downloadLink" style="display: none;" download="stylized-image.png">Download Image</a>
+            </div>
+        </div>
+        
+        <div id="errorMessage" class="error-message"></div>
+        <div id="loadingMessage" class="loading" style="display: none;">Processing... This may take a minute or two.</div>
+        
+        <button id="transferButton" class="action-button" onclick="performStyleTransfer()" disabled>Apply Style Transfer</button>
+    </div>
+
+    <script>
+        // Global variables to track uploaded files
+        let contentFile = null;
+        let styleFile = null;
+        
+        // Initialize event listeners for file upload boxes
+        document.getElementById('contentUploadBox').addEventListener('click', () => {
+            document.getElementById('contentImage').click();
+        });
+        
+        document.getElementById('styleUploadBox').addEventListener('click', () => {
+            document.getElementById('styleImage').click();
+        });
+        
+        // Preview image when selected
+        function previewImage(input, previewId) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const preview = document.getElementById(previewId);
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                    document.getElementById(previewId.replace('Preview', 'Placeholder')).style.display = 'none';
+                    
+                    // Store the file
+                    if (previewId === 'contentPreview') {
+                        contentFile = file;
+                    } else if (previewId === 'stylePreview') {
+                        styleFile = file;
+                    }
+                    
+                    // Enable the transfer button if both images are selected
+                    document.getElementById('transferButton').disabled = !(contentFile && styleFile);
+                }
+                
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // Handle drag and drop
+        function dropHandler(event, type) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            event.currentTarget.classList.remove('drag-over');
+            
+            if (event.dataTransfer.items) {
+                // Use DataTransferItemList interface
+                for (let i = 0; i < event.dataTransfer.items.length; i++) {
+                    if (event.dataTransfer.items[i].kind === 'file') {
+                        const file = event.dataTransfer.items[i].getAsFile();
+                        
+                        // Only process the first image file
+                        if (file.type.startsWith('image/')) {
+                            if (type === 'content') {
+                                document.getElementById('contentImage').files = event.dataTransfer.files;
+                                previewImage(document.getElementById('contentImage'), 'contentPreview');
+                            } else if (type === 'style') {
+                                document.getElementById('styleImage').files = event.dataTransfer.files;
+                                previewImage(document.getElementById('styleImage'), 'stylePreview');
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        function dragOverHandler(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.classList.add('drag-over');
+        }
+        
+        function dragLeaveHandler(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.classList.remove('drag-over');
+        }
+        
+        // Perform the style transfer
+        async function performStyleTransfer() {
+            // Check if both files are selected
+            if (!contentFile || !styleFile) {
+                document.getElementById('errorMessage').textContent = 'Please select both content and style images.';
+                return;
+            }
+            
+            try {
+                // Show loading message
+                document.getElementById('loadingMessage').style.display = 'block';
+                document.getElementById('errorMessage').textContent = '';
+                document.getElementById('transferButton').disabled = true;
+                
+                // Create FormData and append files
+                const formData = new FormData();
+                formData.append('content', contentFile);
+                formData.append('style', styleFile);
+                
+                // Send request to API
+                const response = await fetch('http://localhost:5000/api/style-transfer', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                // Get the result image blob
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                
+                // Display the result
+                const resultPreview = document.getElementById('resultPreview');
+                resultPreview.src = imageUrl;
+                resultPreview.style.display = 'block';
+                document.getElementById('resultPlaceholder').style.display = 'none';
+                
+                // Enable download link
+                const downloadLink = document.getElementById('downloadLink');
+                downloadLink.href = imageUrl;
+                downloadLink.style.display = 'block';
+                
+            } catch (error) {
+                document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+                console.error('Error during style transfer:', error);
+            } finally {
+                // Hide loading message and re-enable button
+                document.getElementById('loadingMessage').style.display = 'none';
+                document.getElementById('transferButton').disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
